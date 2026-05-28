@@ -1,0 +1,42 @@
+# Keep the build context tight — these never belong in the image.
+**/.venv
+**/venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/node_modules
+**/dist
+**/build
+**/.vite
+**/.turbo
+**/.cache
+**/.coverage
+**/htmlcov
+
+# Secrets — Fly secrets supply env vars at runtime, never ship .env files.
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+*.key
+*.pem
+
+# Local dev / OS junk
+.git
+.gitignore
+.github
+.idea
+.vscode
+.DS_Store
+*.swp
+
+# Uploaded media — lives on the volume at /workspace/media, never baked in.
+backend/static/media
+
+# Docs + local notes
+docs
+README.md
+**/*.log

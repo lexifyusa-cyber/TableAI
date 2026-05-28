@@ -1,0 +1,55 @@
+# Fly config for TableAI — production CI/CD deploy.
+# Built + shipped by GitHub Actions (.github/workflows/deploy.yml) on push
+# to main. Code is baked into the image; the volume holds data only
+# (Postgres /workspace/pgdata + owner-uploaded media /workspace/media).
+app = "tableai-dev"
+primary_region = "iad"
+
+# Swap — OOM cushion on the 2G shared box (co-located postgres + backend +
+# headless chromium spikes from the demo flow). Disk-spill is better than an
+# OOM-kill of postgres or uvicorn.
+swap_size_mb = 1024
+
+[build]
+  dockerfile = "Dockerfile"
+  [build.args]
+    # Public Supabase client keys — safe to ship in the browser bundle.
+    # Inlined into the frontend at vite-build time (NOT runtime).
+    VITE_SUPABASE_URL = "https://klveqamyzzyvhmbvhmcp.supabase.co"
+    VITE_SUPABASE_ANON_KEY = "sb_publishable_A3jQkNLeXNpfgM2wHWJGLg_Tdl-FENP"
+    # Blank -> frontend hits same-origin /api (no separate API host).
+    VITE_API_URL = ""
+
+[env]
+  # FastAPI serves the built Vite SPA from here (same origin as /api).
+  BUNDLED_FRONTEND_DIR = "/app/frontend/dist"
+  # Co-located Postgres (trust auth on localhost, matches sti-dev pattern).
+  # The container's postgres listens on 5432; the :5433 in the local dev
+  # config.py default is a TJ-host quirk that does not apply in-container.
+  DATABASE_URL = "postgresql+asyncpg://postgres@localhost:5432/tableai"
+  APP_ENV = "production"
+  LOG_LEVEL = "INFO"
+
+# Volume: co-located postgres data + uploaded media. Survives deploys.
+[mounts]
+  source = "tableai_data"
+  destination = "/workspace"
+
+# Single HTTP service -> FastAPI on :8001 (API + bundled SPA + /static/media/public).
+[http_service]
+  internal_port = 8001
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"
