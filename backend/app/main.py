@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.middleware.cf_only import CloudflareOnlyMiddleware
 from app.api import owner_edit as owner_edit_api
 from app.api import (
     admin as admin_api,
@@ -51,6 +52,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Reject anything that didn't enter through Cloudflare. Closes the
+    # tableai-dev.fly.dev bypass that would otherwise sit outside CF Access.
+    # Skipped automatically for /health (Fly's platform probes) and for
+    # local dev (no fly-client-ip header).
+    app.add_middleware(CloudflareOnlyMiddleware)
 
     app.include_router(demo.router, prefix="/api")
     app.include_router(owner_edit_api.router, prefix="/api")
