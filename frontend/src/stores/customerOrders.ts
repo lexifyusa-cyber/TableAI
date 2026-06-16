@@ -19,6 +19,9 @@ export interface CustomerOrder {
   mode: CustomerOrderMode;
   token_number: number;
   table_number?: number | null;
+  payment_status: "paid";
+  payment_reference: string;
+  paid_at: string;
   status: CustomerOrderStatus;
   items: CustomerCartItem[];
   total_cents: number;
@@ -32,7 +35,12 @@ interface CustomerOrderState {
   addItem: (tenant: string, item: MenuItem) => void;
   updateQuantity: (tenant: string, itemId: string, quantity: number) => void;
   clearCart: (tenant: string) => void;
-  submitOrder: (tenant: string, customerId: string, mode: CustomerOrderMode) => CustomerOrder | null;
+  submitOrder: (
+    tenant: string,
+    customerId: string,
+    mode: CustomerOrderMode,
+    paymentReference: string,
+  ) => CustomerOrder | null;
   updateOrderStatus: (tenant: string, orderId: string, status: CustomerOrderStatus) => void;
 }
 
@@ -95,7 +103,7 @@ export const useCustomerOrderStore = create<CustomerOrderState>()(
           const key = cartKey(tenant);
           return { carts: { ...state.carts, [key]: [] } };
         }),
-      submitOrder: (tenant, customerId, mode) => {
+      submitOrder: (tenant, customerId, mode, paymentReference) => {
         const key = cartKey(tenant);
         const cart = get().carts[key] ?? [];
         if (cart.length === 0) return null;
@@ -107,6 +115,9 @@ export const useCustomerOrderStore = create<CustomerOrderState>()(
           mode,
           token_number: tokenNumber(),
           table_number: tableNumber(),
+          payment_status: "paid",
+          payment_reference: paymentReference,
+          paid_at: now,
           status: "received",
           items: cart,
           total_cents: totalCents(cart),

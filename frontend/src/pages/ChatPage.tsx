@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Bot,
   Coins,
+  CreditCard,
   Gamepad2,
   LogIn,
   LogOut,
@@ -14,6 +15,7 @@ import {
   ReceiptText,
   RotateCw,
   Settings,
+  ShieldCheck,
   ShoppingCart,
   Sparkles,
   Trash2,
@@ -304,6 +306,8 @@ export function ChatPage() {
   const { slug } = useParams<{ slug: string }>();
   const [panelTab, setPanelTab] = useState<CustomerPanelTab>("chat");
   const [orderMode, setOrderMode] = useState<CustomerOrderMode>("dine-in");
+  const [paymentReference, setPaymentReference] = useState<string | null>(null);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
   const setSlug = useTenantStore((s) => s.setSlug);
   const { data: tenant, isLoading: tenantLoading, error: tenantError } = useTenant(slug);
   const { data: menu } = useMenu(slug);
@@ -356,6 +360,7 @@ export function ChatPage() {
   const cart = slug ? carts[slug] ?? [] : [];
   const customerOrders = slug ? orders[slug] ?? [] : [];
   const cartTotalCents = cart.reduce((sum, item) => sum + (item.price_cents ?? 0) * item.quantity, 0);
+  const cartSignature = cart.map((item) => `${item.item_id}:${item.quantity}`).join("|");
   const creditLimit = 50;
   const creditsUsed = Math.min(creditLimit, messages.filter((message) => message.role === "user").length);
   const creditsRemaining = Math.max(0, creditLimit - creditsUsed);
@@ -376,6 +381,25 @@ export function ChatPage() {
     });
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [slug, customerOrders, updateOrderStatus]);
+
+  useEffect(() => {
+    setPaymentReference(null);
+    setPaymentProcessing(false);
+  }, [cartSignature, cartTotalCents, orderMode]);
+
+  const authorizePayment = () => {
+    if (cart.length === 0 || cartTotalCents <= 0) {
+      toast.error("Add priced items to the cart before payment.");
+      return;
+    }
+    setPaymentProcessing(true);
+    window.setTimeout(() => {
+      const reference = `PAY-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      setPaymentReference(reference);
+      setPaymentProcessing(false);
+      toast.success("Payment authorized securely.");
+    }, 900);
+  };
 
   if (tenantError) {
     return (
@@ -566,6 +590,34 @@ export function ChatPage() {
                           ))}
                         </div>
 
+                        <div className="rounded-2xl border border-ink-200 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200">
+                              {paymentReference ? <ShieldCheck className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+                                {paymentReference ? "Payment authorized" : "Secure payment required"}
+                              </div>
+                              <p className="mt-0.5 text-xs leading-5 text-ink-500">
+                                {paymentReference
+                                  ? `Reference ${paymentReference}. No card details are stored by TableAI.`
+                                  : "Pay through a secure provider flow before sending the order to the kitchen."}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant={paymentReference ? "secondary" : "tenant"}
+                            className="mt-3 w-full"
+                            loading={paymentProcessing}
+                            disabled={cartTotalCents <= 0}
+                            onClick={authorizePayment}
+                          >
+                            {paymentReference ? "Re-authorize payment" : `Secure Pay ${formatPrice(cartTotalCents)}`}
+                          </Button>
+                        </div>
+
                         <div className="flex items-center justify-between border-t border-ink-200 pt-3 dark:border-ink-800">
                           <div>
                             <div className="text-xs text-ink-500">Total</div>
@@ -574,15 +626,21 @@ export function ChatPage() {
                           <Button
                             type="button"
                             variant="tenant"
+                            disabled={!paymentReference}
                             onClick={() => {
                               if (!slug || !customer) return;
-                              const order = submitOrder(slug, customer.customer_id, orderMode);
+                              if (!paymentReference) {
+                                toast.error("Complete secure payment before placing the order.");
+                                return;
+                              }
+                              const order = submitOrder(slug, customer.customer_id, orderMode, paymentReference);
                               if (!order) return;
                               toast.success(`Order placed. Token #${order.token_number}.`);
+                              setPaymentReference(null);
                               setPanelTab("orders");
                             }}
                           >
-                            Place order
+                            Place paid order
                           </Button>
                         </div>
                       </div>
@@ -742,9 +800,15 @@ export function ChatPage() {
                                   Table #{order.table_number}
                                 </span>
                               )}
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+                                Paid
+                              </span>
                             </div>
                             <div className="mt-3 text-sm text-ink-500">
                               Ordered {new Date(order.created_at).toLocaleString()}
+                            </div>
+                            <div className="mt-1 text-xs text-ink-400">
+                              Payment ref {order.payment_reference || "previous-order"}
                             </div>
                           </div>
                           <div
