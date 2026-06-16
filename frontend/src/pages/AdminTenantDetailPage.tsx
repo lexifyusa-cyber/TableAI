@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Bot, ExternalLink, Mail, MessageSquare, RefreshCw, Star, UtensilsCrossed, UserPlus } from "lucide-react";
+import { ArrowLeft, Bot, ExternalLink, LogIn, Mail, MessageSquare, RefreshCw, Star, UtensilsCrossed, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminTenants, useCreateInvite, useInvitesForTenant, useModelConfig } from "@/hooks/useAdmin";
 import { useConversationList, useMetrics } from "@/hooks/useDashboard";
@@ -110,6 +110,7 @@ export function AdminTenantDetailPage() {
         <div className="flex gap-2">
           <Link to={`/m/${slug}`}><Button variant="secondary"><UtensilsCrossed className="h-4 w-4" />Menu</Button></Link>
           <Link to={`/c/${slug}`}><Button variant="secondary"><MessageSquare className="h-4 w-4" />Chat</Button></Link>
+          <Link to={`/c/${slug}/login`}><Button variant="secondary"><LogIn className="h-4 w-4" />Customer login</Button></Link>
           {tenant?.source_url && (
             <a href={tenant.source_url} target="_blank" rel="noreferrer">
               <Button variant="ghost">Source <ExternalLink className="h-4 w-4" /></Button>

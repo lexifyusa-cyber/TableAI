@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, MessageSquare, Plus, Search, Sparkles, UserPlus } from "lucide-react";
+import { ExternalLink, LogIn, MessageSquare, Plus, Search, Sparkles, UserPlus } from "lucide-react";
 import { useAdminTenants } from "@/hooks/useAdmin";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -93,6 +93,9 @@ export function AdminTenantsPage() {
                     </Link>
                     <Link to={`/c/${t.slug}`} className="text-ink-500 hover:text-ink-900" onClick={(e) => e.stopPropagation()} title="Chat">
                       <MessageSquare className="h-4 w-4" />
+                    </Link>
+                    <Link to={`/c/${t.slug}/login`} className="text-ink-500 hover:text-ink-900" onClick={(e) => e.stopPropagation()} title="Customer login">
+                      <LogIn className="h-4 w-4" />
                     </Link>
                   </div>
                 </Link>
