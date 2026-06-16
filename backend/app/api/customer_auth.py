@@ -24,7 +24,7 @@ from app.models.tenant import Tenant
 router = APIRouter(prefix="/customer", tags=["customer"])
 
 
-async def _resolve_auth_user_id(request: Request) -> tuple[UUID | None, str | None]:
+async def resolve_customer_auth(request: Request) -> tuple[UUID | None, str | None]:
     """Return (auth_user_id, email) from Bearer token or dev-mode headers.
 
     Does NOT touch the profiles table — customers are stored in customers only.
@@ -38,8 +38,13 @@ async def _resolve_auth_user_id(request: Request) -> tuple[UUID | None, str | No
         return None, None
 
     s = get_settings()
-    if s.app_env == "development" and request.headers.get("x-dev-auth") == "1":
-        email = request.headers.get("x-dev-email", "").strip()
+    dev_auth = request.headers.get("x-customer-dev-auth") == "1" or request.headers.get("x-dev-auth") == "1"
+    if s.app_env == "development" and dev_auth:
+        email = (
+            request.headers.get("x-customer-dev-email")
+            or request.headers.get("x-dev-email")
+            or ""
+        ).strip()
         if email:
             user_id = uuid5(NAMESPACE_DNS, f"tableai-dev:{email.lower()}")
             return user_id, email
@@ -77,7 +82,7 @@ async def customer_join(
     if not t:
         raise HTTPException(status_code=404, detail=f"Tenant '{req.tenant}' not found")
 
-    auth_user_id, email = await _resolve_auth_user_id(request)
+    auth_user_id, email = await resolve_customer_auth(request)
 
     if auth_user_id:
         # Return existing record linked to this auth user + tenant.
@@ -146,7 +151,7 @@ async def customer_me(
     db: AsyncSession = Depends(get_session),
 ) -> CustomerProfile:
     """Return the customer profile for the authenticated user + tenant."""
-    auth_user_id, _ = await _resolve_auth_user_id(request)
+    auth_user_id, _ = await resolve_customer_auth(request)
     if not auth_user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 

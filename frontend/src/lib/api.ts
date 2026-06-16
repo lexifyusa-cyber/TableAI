@@ -80,14 +80,23 @@ export const api = {
   getMetrics: (tenant: string) =>
     request<MetricsResponse>(`/api/metrics?tenant=${encodeURIComponent(tenant)}`),
 
-  customerJoin: (body: { tenant: string; display_name?: string }) =>
+  customerJoin: (body: { tenant: string; display_name?: string }, localEmail?: string) =>
     request<CustomerProfile>("/api/customer/join", {
       method: "POST",
+      headers: localEmail && localAuthEnabled ? {
+        "X-Customer-Dev-Auth": "1",
+        "X-Customer-Dev-Email": localEmail,
+      } : undefined,
       body: JSON.stringify(body),
     }),
 
-  customerMe: (tenant: string) =>
-    request<CustomerProfile>(`/api/customer/me?tenant=${encodeURIComponent(tenant)}`),
+  customerMe: (tenant: string, localEmail?: string) =>
+    request<CustomerProfile>(`/api/customer/me?tenant=${encodeURIComponent(tenant)}`, {
+      headers: localEmail && localAuthEnabled ? {
+        "X-Customer-Dev-Auth": "1",
+        "X-Customer-Dev-Email": localEmail,
+      } : undefined,
+    }),
 };
 
 export function chatUrl(): string {

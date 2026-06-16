@@ -42,7 +42,7 @@ export function ChatPage() {
   const { messages, send, stop, reset, isStreaming, error } = useChat({
     tenant: slug ?? "",
     surface: "qr",
-    customerId: customer?.customer_id ?? null,
+    customer,
   });
   const listRef = useRef<HTMLDivElement>(null);
 

@@ -1,20 +1,22 @@
 import { useCallback, useRef, useState } from "react";
 import { chatUrl } from "@/lib/api";
+import { localAuthEnabled } from "@/lib/env";
 import { readSSE } from "@/lib/sse";
-import type { ChatMessage, ChatStreamEvent, ConversationSurface } from "@/types/api";
+import { useAuthStore } from "@/stores/auth";
+import type { ChatMessage, ChatStreamEvent, ConversationSurface, CustomerProfile } from "@/types/api";
 
 interface UseChatOptions {
   tenant: string;
   surface?: ConversationSurface;
   sessionId?: string;
-  customerId?: string | null;
+  customer?: CustomerProfile | null;
 }
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-export function useChat({ tenant, surface = "qr", sessionId, customerId }: UseChatOptions) {
+export function useChat({ tenant, surface = "qr", sessionId, customer }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,16 +51,25 @@ export function useChat({ tenant, surface = "qr", sessionId, customerId }: UseCh
       abortRef.current = abort;
 
       try {
+        const token = useAuthStore.getState().session?.access_token;
+        const customerHeaders: Record<string, string> = token
+          ? { Authorization: `Bearer ${token}` }
+          : localAuthEnabled && customer?.email
+            ? {
+                "X-Customer-Dev-Auth": "1",
+                "X-Customer-Dev-Email": customer.email,
+              }
+            : {};
         const res = await fetch(chatUrl(), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...customerHeaders },
           body: JSON.stringify({
             tenant,
             message: trimmed,
             surface,
             session_id: sessionId,
             conversation_id: conversationIdRef.current,
-            customer_id: customerId ?? null,
+            customer_id: customer?.customer_id ?? null,
           }),
           signal: abort.signal,
         });
@@ -110,7 +121,7 @@ export function useChat({ tenant, surface = "qr", sessionId, customerId }: UseCh
         abortRef.current = null;
       }
     },
-    [tenant, surface, sessionId, customerId, isStreaming],
+    [tenant, surface, sessionId, customer?.customer_id, customer?.email, isStreaming],
   );
 
   const stop = useCallback(() => {

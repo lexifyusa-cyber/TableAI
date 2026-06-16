@@ -30,7 +30,7 @@ export function CustomerLoginPage() {
     if (!slug || completedRef.current) return;
     completedRef.current = true;
     try {
-      const profile = await api.customerJoin({ tenant: slug });
+      const profile = await api.customerJoin({ tenant: slug }, email);
       setCustomer(slug, profile);
       nav(`/c/${slug}`, { replace: true });
     } catch (err) {
@@ -58,15 +58,7 @@ export function CustomerLoginPage() {
     try {
       const supa = getSupabase();
       if (!supa) {
-        // Local dev — skip Supabase, jump straight to join.
-        useAuthStore.getState().setProfile({
-          user_id: email.toLowerCase(),
-          email,
-          role: "owner",
-          display_name: null,
-          tenants: [],
-        });
-        useAuthStore.getState().setReady(true);
+        // Local dev: skip Supabase, but keep customer identity separate from staff auth.
         await completeLogin();
         return;
       }

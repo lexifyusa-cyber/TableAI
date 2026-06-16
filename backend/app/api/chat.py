@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -25,6 +25,7 @@ from app.models import (
     Tenant,
 )
 from app.models.customer import Customer
+from app.api.customer_auth import resolve_customer_auth
 from app.services.knowledge import KnowledgeManifest
 from app.services.llm import get_provider_for
 
@@ -41,7 +42,11 @@ class ChatRequest(BaseModel):
 
 
 @router.post("")
-async def chat(req: ChatRequest, db: AsyncSession = Depends(get_session)) -> StreamingResponse:
+async def chat(
+    req: ChatRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
     t = (
         await db.execute(select(Tenant).where(Tenant.slug == req.tenant))
     ).scalar_one_or_none()
@@ -61,14 +66,30 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_session)) -> Str
             }
         ]
 
-    # Validate customer_id belongs to this tenant (if provided).
+    # Link chats to the authenticated customer for this tenant. The posted
+    # customer_id is only a fallback for older local clients.
     validated_customer_id: UUID | None = None
-    if req.customer_id:
+    auth_user_id, _ = await resolve_customer_auth(request)
+    if auth_user_id:
+        customer = (
+            await db.execute(
+                select(Customer).where(
+                    Customer.auth_user_id == auth_user_id,
+                    Customer.tenant_id == t.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if customer:
+            validated_customer_id = customer.id
+    if not validated_customer_id and req.customer_id:
         try:
             cid = UUID(req.customer_id)
             row = (
                 await db.execute(
-                    select(Customer).where(Customer.id == cid, Customer.tenant_id == t.id)
+                    select(Customer).where(
+                        Customer.id == cid,
+                        Customer.tenant_id == t.id,
+                    )
                 )
             ).scalar_one_or_none()
             if row:
