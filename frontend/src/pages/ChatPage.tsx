@@ -15,7 +15,6 @@ import {
   UserCircle,
   UtensilsCrossed,
 } from "lucide-react";
-import type { MenuItem } from "@/types/api";
 import { useTenant } from "@/hooks/useTenants";
 import { useTenantTheme } from "@/hooks/useTenantTheme";
 import { useChat } from "@/hooks/useChat";
@@ -55,168 +54,222 @@ function buildSuggestions(menuPresent: boolean): string[] {
   ];
 }
 
-function pickRandom<T>(items: T[]): T | null {
-  if (items.length === 0) return null;
-  return items[Math.floor(Math.random() * items.length)] ?? null;
-}
+const DOTS = [
+  { x: 20, y: 24 },
+  { x: 52, y: 14 },
+  { x: 82, y: 30 },
+  { x: 72, y: 64 },
+  { x: 45, y: 82 },
+  { x: 18, y: 62 },
+] as const;
 
-function PriceGuessGame({ items }: { items: MenuItem[] }) {
-  const pricedItems = useMemo(() => items.filter((item) => item.price_cents != null), [items]);
-  const [item, setItem] = useState<MenuItem | null>(() => pickRandom(pricedItems));
-  const [guess, setGuess] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+function ConnectDotsGame() {
+  const [nextDot, setNextDot] = useState(0);
+  const complete = nextDot >= DOTS.length;
 
-  useEffect(() => {
-    if (!item && pricedItems.length > 0) setItem(pickRandom(pricedItems));
-  }, [item, pricedItems]);
-
-  const submitGuess = () => {
-    if (!item?.price_cents) return;
-    const guessedCents = Math.round(Number.parseFloat(guess) * 100);
-    if (Number.isNaN(guessedCents)) {
-      setResult("Enter a price first.");
-      return;
-    }
-    const diff = Math.abs(guessedCents - item.price_cents);
-    if (diff <= 100) setResult(`Close. Actual price: ${formatPrice(item.price_cents)}.`);
-    else setResult(`Actual price: ${formatPrice(item.price_cents)}. Try the next one.`);
-  };
-
-  const nextItem = () => {
-    setItem(pickRandom(pricedItems));
-    setGuess("");
-    setResult(null);
-  };
-
-  if (!item) {
-    return (
-      <GameCard title="Price Guess" description="Guess menu prices from memory.">
-        <p className="text-sm text-ink-500">No priced menu items are available for this game yet.</p>
-      </GameCard>
-    );
-  }
+  const reset = () => setNextDot(0);
 
   return (
-    <GameCard title="Price Guess" description="Guess the menu price, then reveal how close you were.">
-      <div className="rounded-2xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950/40">
-        <div className="text-xs font-medium uppercase tracking-wide text-ink-500">Dish</div>
-        <div className="mt-1 text-lg font-semibold text-ink-900 dark:text-ink-100">{item.name}</div>
-        {item.description && <p className="mt-1 line-clamp-2 text-sm text-ink-500">{item.description}</p>}
-      </div>
-      <div className="mt-3 flex gap-2">
-        <input
-          value={guess}
-          onChange={(e) => setGuess(e.target.value)}
-          inputMode="decimal"
-          placeholder="12.99"
-          className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-800 dark:bg-ink-900"
-        />
-        <Button type="button" size="sm" onClick={submitGuess}>Check</Button>
-      </div>
-      {result && <p className="mt-2 text-sm font-medium text-ink-700 dark:text-ink-200">{result}</p>}
-      <Button type="button" variant="secondary" size="sm" className="mt-3 w-full" onClick={nextItem}>
-        Next dish
-      </Button>
-    </GameCard>
-  );
-}
-
-function MenuQuizGame({ items }: { items: MenuItem[] }) {
-  const playableItems = useMemo(() => items.filter((item) => item.description || item.tags.length > 0), [items]);
-  const [item, setItem] = useState<MenuItem | null>(() => pickRandom(playableItems));
-  const [answer, setAnswer] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!item && playableItems.length > 0) setItem(pickRandom(playableItems));
-  }, [item, playableItems]);
-
-  const choices = useMemo(() => {
-    if (!item) return [];
-    const distractors = playableItems
-      .filter((candidate) => candidate.id !== item.id)
-      .sort(() => 0.5 - Math.random())
-      .slice(0, 2);
-    return [item, ...distractors].sort(() => 0.5 - Math.random());
-  }, [item, playableItems]);
-
-  const nextQuestion = () => {
-    setItem(pickRandom(playableItems));
-    setAnswer(null);
-  };
-
-  if (!item || choices.length === 0) {
-    return (
-      <GameCard title="Menu Quiz" description="Match clues to dishes.">
-        <p className="text-sm text-ink-500">Add menu descriptions or tags to unlock this game.</p>
-      </GameCard>
-    );
-  }
-
-  return (
-    <GameCard title="Menu Quiz" description="Pick the dish that matches the clue.">
-      <div className="rounded-2xl border border-dashed border-ink-300 bg-white p-4 dark:border-ink-700 dark:bg-ink-900">
-        <div className="text-xs font-medium uppercase tracking-wide text-ink-500">Clue</div>
-        <p className="mt-1 text-sm text-ink-700 dark:text-ink-200">
-          {item.description || `Tagged with ${item.tags.slice(0, 2).join(", ")}`}
-        </p>
-      </div>
-      <div className="mt-3 grid gap-2">
-        {choices.map((choice) => {
-          const selected = answer === choice.id;
-          const correct = choice.id === item.id;
+    <GameCard title="Connect Dots" description="Tap the dots in order to complete the shape.">
+      <div className="relative h-72 overflow-hidden rounded-3xl border border-ink-200 bg-gradient-to-br from-sky-50 to-orange-50 dark:border-ink-800 dark:from-ink-950 dark:to-ink-900">
+        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {DOTS.slice(0, Math.max(0, nextDot - 1)).map((dot, index) => {
+            const next = DOTS[index + 1];
+            if (!next) return null;
+            return (
+              <line
+                key={`${dot.x}-${dot.y}`}
+                x1={dot.x}
+                y1={dot.y}
+                x2={next.x}
+                y2={next.y}
+                stroke="var(--tenant-primary)"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            );
+          })}
+          {complete && (
+            <line
+              x1={DOTS[DOTS.length - 1].x}
+              y1={DOTS[DOTS.length - 1].y}
+              x2={DOTS[0].x}
+              y2={DOTS[0].y}
+              stroke="var(--tenant-primary)"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+        {DOTS.map((dot, index) => {
+          const active = index === nextDot;
+          const done = index < nextDot;
           return (
             <button
-              key={choice.id}
+              key={index}
               type="button"
-              onClick={() => setAnswer(choice.id)}
+              onClick={() => { if (active) setNextDot((value) => value + 1); }}
               className={cn(
-                "rounded-xl border px-3 py-2 text-left text-sm transition",
-                selected && correct
-                  ? "border-emerald-400 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"
-                  : selected
-                    ? "border-rose-300 bg-rose-50 text-rose-900 dark:bg-rose-950/30 dark:text-rose-100"
-                    : "border-ink-200 bg-white text-ink-700 hover:border-[var(--tenant-primary)] dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200",
+                "absolute flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border text-sm font-bold shadow-sm transition",
+                active
+                  ? "scale-110 border-[var(--tenant-primary)] bg-[var(--tenant-primary)] text-white"
+                  : done
+                    ? "border-emerald-300 bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
+                    : "border-ink-200 bg-white text-ink-500 dark:border-ink-700 dark:bg-ink-900",
               )}
+              style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
+              aria-label={`Dot ${index + 1}`}
             >
-              {choice.name}
+              {index + 1}
             </button>
           );
         })}
       </div>
-      {answer && (
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-ink-700 dark:text-ink-200">
-            {answer === item.id ? "Correct." : `Not quite. It was ${item.name}.`}
-          </p>
-          <Button type="button" size="sm" variant="secondary" onClick={nextQuestion}>Next</Button>
-        </div>
-      )}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-ink-700 dark:text-ink-200">
+          {complete ? "Shape complete." : `Next dot: ${nextDot + 1}`}
+        </p>
+        <Button type="button" size="sm" variant="secondary" onClick={reset}>Reset</Button>
+      </div>
     </GameCard>
   );
 }
 
-function MoodPickerGame({ tenantName, onAsk }: { tenantName: string; onAsk: (prompt: string) => void }) {
-  const moods = [
-    { label: "Comfort", prompt: `Recommend a comforting meal from ${tenantName}.` },
-    { label: "Healthy", prompt: `Recommend a lighter or healthier option from ${tenantName}.` },
-    { label: "Adventure", prompt: `Pick the most adventurous menu item from ${tenantName}.` },
-    { label: "Sweet", prompt: `Recommend something sweet or dessert-like from ${tenantName}.` },
-  ];
+function SnakeAndLadderGame() {
+  const [position, setPosition] = useState(1);
+  const [roll, setRoll] = useState<number | null>(null);
+  const [message, setMessage] = useState("Roll to start.");
+  const jumps: Record<number, number> = { 4: 14, 9: 31, 17: 7, 20: 30, 28: 12, 35: 22 };
+
+  const rollDice = () => {
+    const dice = Math.floor(Math.random() * 6) + 1;
+    let next = Math.min(36, position + dice);
+    const jumped = jumps[next];
+    setRoll(dice);
+    if (jumped) {
+      const isLadder = jumped > next;
+      setMessage(`${isLadder ? "Ladder" : "Snake"}: ${next} -> ${jumped}`);
+      next = jumped;
+    } else if (next === 36) {
+      setMessage("You reached the finish.");
+    } else {
+      setMessage(`Moved to ${next}.`);
+    }
+    setPosition(next);
+  };
+
+  const reset = () => {
+    setPosition(1);
+    setRoll(null);
+    setMessage("Roll to start.");
+  };
 
   return (
-    <GameCard title="Mood Picker" description="Choose a mood and let the AI turn it into a menu recommendation.">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {moods.map((mood) => (
-          <button
-            key={mood.label}
-            type="button"
-            onClick={() => onAsk(mood.prompt)}
-            className="rounded-2xl border border-ink-200 bg-white p-4 text-left transition hover:border-[var(--tenant-primary)] hover:shadow-sm dark:border-ink-800 dark:bg-ink-900"
-          >
-            <div className="font-semibold text-ink-900 dark:text-ink-100">{mood.label}</div>
-            <div className="mt-1 text-xs text-ink-500">Ask the assistant for a matching pick.</div>
-          </button>
-        ))}
+    <GameCard title="Snake and Ladder" description="Roll the dice, climb ladders, and dodge snakes.">
+      <div className="grid grid-cols-6 gap-1 rounded-3xl border border-ink-200 bg-ink-50 p-2 dark:border-ink-800 dark:bg-ink-950/40">
+        {Array.from({ length: 36 }, (_, i) => 36 - i).map((cell) => {
+          const jump = jumps[cell];
+          return (
+            <div
+              key={cell}
+              className={cn(
+                "relative flex aspect-square items-center justify-center rounded-xl border text-xs font-semibold",
+                position === cell
+                  ? "border-[var(--tenant-primary)] bg-[var(--tenant-primary)] text-white"
+                  : "border-ink-200 bg-white text-ink-700 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200",
+              )}
+            >
+              {cell}
+              {jump && (
+                <span className="absolute bottom-1 right-1 text-[10px]">
+                  {jump > cell ? "L" : "S"}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+            Position {position}{roll ? ` · rolled ${roll}` : ""}
+          </p>
+          <p className="text-sm text-ink-500">{message}</p>
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" onClick={rollDice} disabled={position === 36}>Roll</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={reset}>Reset</Button>
+        </div>
+      </div>
+    </GameCard>
+  );
+}
+
+function PingPongGame() {
+  const [running, setRunning] = useState(false);
+  const [score, setScore] = useState(0);
+  const [paddleX, setPaddleX] = useState(42);
+  const [ball, setBall] = useState({ x: 50, y: 34, dx: 2.2, dy: 2 });
+  const [status, setStatus] = useState("Press Start, then keep the ball above your paddle.");
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => {
+      setBall((current) => {
+        let { x, y, dx, dy } = current;
+        x += dx;
+        y += dy;
+        if (x <= 3 || x >= 97) dx *= -1;
+        if (y <= 4) dy *= -1;
+        const hitsPaddle = y >= 86 && y <= 92 && x >= paddleX && x <= paddleX + 16;
+        if (hitsPaddle) {
+          dy = -Math.abs(dy);
+          setScore((value) => value + 1);
+          setStatus("Nice return.");
+        } else if (y > 98) {
+          setRunning(false);
+          setStatus("Missed. Start again.");
+          return { x: 50, y: 34, dx: 2.2, dy: 2 };
+        }
+        return { x, y, dx, dy };
+      });
+    }, 35);
+    return () => window.clearInterval(timer);
+  }, [running, paddleX]);
+
+  const start = () => {
+    setScore(0);
+    setStatus("Game running.");
+    setBall({ x: 50, y: 34, dx: 2.2, dy: 2 });
+    setRunning(true);
+  };
+
+  const movePaddle = (delta: number) => {
+    setPaddleX((value) => Math.min(84, Math.max(0, value + delta)));
+  };
+
+  return (
+    <GameCard title="Ping Pong" description="Move the paddle and keep the ball alive.">
+      <div className="relative h-72 overflow-hidden rounded-3xl border border-ink-200 bg-ink-950 dark:border-ink-800">
+        <div
+          className="absolute h-4 w-4 rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.8)]"
+          style={{ left: `${ball.x}%`, top: `${ball.y}%`, transform: "translate(-50%, -50%)" }}
+        />
+        <div
+          className="absolute bottom-4 h-3 rounded-full bg-[var(--tenant-primary)]"
+          style={{ left: `${paddleX}%`, width: "16%" }}
+        />
+        <div className="absolute left-4 top-4 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+          Score {score}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-ink-600 dark:text-ink-300">{status}</p>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="secondary" onClick={() => movePaddle(-10)}>Left</Button>
+          <Button type="button" size="sm" onClick={start}>{running ? "Restart" : "Start"}</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => movePaddle(10)}>Right</Button>
+        </div>
       </div>
     </GameCard>
   );
@@ -511,19 +564,11 @@ export function ChatPage() {
 
           {panelTab === "games" && (
             <div className="grid gap-4 xl:grid-cols-2">
-              <PriceGuessGame items={availableMenuItems} />
-              <MenuQuizGame items={availableMenuItems} />
-              <MoodPickerGame
-                tenantName={tenant?.name ?? "this restaurant"}
-                onAsk={(prompt) => {
-                  setPanelTab("chat");
-                  send(prompt);
-                }}
-              />
-              <SpiceTrustFall menu={menu} tenantName={tenant?.name ?? "us"} onPickDish={(name) => {
-                setPanelTab("chat");
-                send(`Tell me about the ${name}`);
-              }} />
+              <ConnectDotsGame />
+              <SnakeAndLadderGame />
+              <div className="xl:col-span-2">
+                <PingPongGame />
+              </div>
             </div>
           )}
 
