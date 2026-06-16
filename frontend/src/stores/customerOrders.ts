@@ -106,7 +106,7 @@ export const useCustomerOrderStore = create<CustomerOrderState>()(
           customer_id: customerId,
           mode,
           token_number: tokenNumber(),
-          table_number: mode === "take-out" ? tableNumber() : null,
+          table_number: tableNumber(),
           status: "received",
           items: cart,
           total_cents: totalCents(cart),
