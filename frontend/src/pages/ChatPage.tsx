@@ -9,9 +9,14 @@ import {
   LogIn,
   LogOut,
   MessageSquare,
+  Minus,
+  Plus,
+  ReceiptText,
   RotateCw,
   Settings,
+  ShoppingCart,
   Sparkles,
+  Trash2,
   UserCircle,
   UtensilsCrossed,
 } from "lucide-react";
@@ -21,6 +26,7 @@ import { useChat } from "@/hooks/useChat";
 import { useMenu } from "@/hooks/useMenu";
 import { useTenantStore } from "@/stores/tenant";
 import { useCustomerAuthStore } from "@/stores/customerAuth";
+import { useCustomerOrderStore, type CustomerOrderMode, type CustomerOrderStatus } from "@/stores/customerOrders";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { SuggestedPrompts } from "@/components/chat/SuggestedPrompts";
@@ -34,15 +40,22 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-type CustomerPanelTab = "chat" | "profile" | "settings" | "games" | "usage";
+type CustomerPanelTab = "chat" | "profile" | "settings" | "games" | "orders" | "usage";
 
 const CUSTOMER_TABS: Array<{ id: CustomerPanelTab; label: string; icon: typeof MessageSquare }> = [
   { id: "chat", label: "Menu & AI", icon: MessageSquare },
   { id: "profile", label: "Profile", icon: UserCircle },
   { id: "settings", label: "Settings", icon: Settings },
   { id: "games", label: "Games", icon: Gamepad2 },
+  { id: "orders", label: "Order Status", icon: ReceiptText },
   { id: "usage", label: "Credits", icon: Coins },
 ];
+
+const ORDER_STATUS_LABELS: Record<CustomerOrderStatus, string> = {
+  received: "Order received",
+  preparing: "Preparing",
+  ready: "Ready",
+};
 
 function buildSuggestions(menuPresent: boolean): string[] {
   if (!menuPresent) return ["What do you serve?", "Tell me about the business", "What are your hours?"];
@@ -290,6 +303,7 @@ function GameCard({ title, description, children }: { title: string; description
 export function ChatPage() {
   const { slug } = useParams<{ slug: string }>();
   const [panelTab, setPanelTab] = useState<CustomerPanelTab>("chat");
+  const [orderMode, setOrderMode] = useState<CustomerOrderMode>("dine-in");
   const setSlug = useTenantStore((s) => s.setSlug);
   const { data: tenant, isLoading: tenantLoading, error: tenantError } = useTenant(slug);
   const { data: menu } = useMenu(slug);
@@ -298,6 +312,13 @@ export function ChatPage() {
   const getCustomer = useCustomerAuthStore((s) => s.getCustomer);
   const clearCustomer = useCustomerAuthStore((s) => s.clearCustomer);
   const customer = slug ? getCustomer(slug) : null;
+  const carts = useCustomerOrderStore((s) => s.carts);
+  const orders = useCustomerOrderStore((s) => s.orders);
+  const addItem = useCustomerOrderStore((s) => s.addItem);
+  const updateQuantity = useCustomerOrderStore((s) => s.updateQuantity);
+  const clearCart = useCustomerOrderStore((s) => s.clearCart);
+  const submitOrder = useCustomerOrderStore((s) => s.submitOrder);
+  const updateOrderStatus = useCustomerOrderStore((s) => s.updateOrderStatus);
 
   const { messages, send, stop, reset, isStreaming, error } = useChat({
     tenant: slug ?? "",
@@ -332,9 +353,29 @@ export function ChatPage() {
     () => menuItems.filter((item) => item.is_available),
     [menuItems],
   );
+  const cart = slug ? carts[slug] ?? [] : [];
+  const customerOrders = slug ? orders[slug] ?? [] : [];
+  const cartTotalCents = cart.reduce((sum, item) => sum + (item.price_cents ?? 0) * item.quantity, 0);
   const creditLimit = 50;
   const creditsUsed = Math.min(creditLimit, messages.filter((message) => message.role === "user").length);
   const creditsRemaining = Math.max(0, creditLimit - creditsUsed);
+
+  useEffect(() => {
+    if (!slug || customerOrders.length === 0) return;
+    const timers = customerOrders.flatMap((order) => {
+      if (order.status === "ready") return [];
+      const age = Date.now() - new Date(order.created_at).getTime();
+      const preparingDelay = Math.max(0, 5_000 - age);
+      const readyDelay = Math.max(0, 15_000 - age);
+      const nextTimers: number[] = [];
+      if (order.status === "received") {
+        nextTimers.push(window.setTimeout(() => updateOrderStatus(slug, order.id, "preparing"), preparingDelay));
+      }
+      nextTimers.push(window.setTimeout(() => updateOrderStatus(slug, order.id, "ready"), readyDelay));
+      return nextTimers;
+    });
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [slug, customerOrders, updateOrderStatus]);
 
   if (tenantError) {
     return (
@@ -426,12 +467,12 @@ export function ChatPage() {
                 <CardBody>
                   {availableMenuItems.length > 0 ? (
                     <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
-                      {availableMenuItems.slice(0, 18).map((item) => (
-                        <button
+                      {availableMenuItems.slice(0, 18).map((item) => {
+                        const cartItem = cart.find((entry) => entry.item_id === item.id);
+                        return (
+                        <div
                           key={item.id}
-                          type="button"
-                          onClick={() => send(`Tell me about ${item.name}`)}
-                          className="w-full rounded-2xl border border-ink-200 bg-white p-3 text-left transition hover:border-[var(--tenant-primary)] hover:shadow-sm dark:border-ink-800 dark:bg-ink-900"
+                          className="rounded-2xl border border-ink-200 bg-white p-3 transition hover:border-[var(--tenant-primary)] hover:shadow-sm dark:border-ink-800 dark:bg-ink-900"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -446,12 +487,107 @@ export function ChatPage() {
                               </span>
                             )}
                           </div>
-                        </button>
-                      ))}
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => send(`Tell me about ${item.name}`)}
+                              className="text-xs font-medium text-ink-500 hover:text-[var(--tenant-primary)]"
+                            >
+                              Ask AI
+                            </button>
+                            <Button type="button" size="sm" variant="tenant" onClick={() => { if (slug) addItem(slug, item); }}>
+                              <Plus className="h-3.5 w-3.5" />
+                              {cartItem ? `Add (${cartItem.quantity})` : "Add"}
+                            </Button>
+                          </div>
+                        </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm text-ink-500">No available menu items found yet.</p>
                   )}
+
+                  <div className="mt-4 rounded-2xl border border-ink-200 bg-ink-50 p-4 dark:border-ink-800 dark:bg-ink-950/40">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart className="h-4 w-4 text-[var(--tenant-primary)]" />
+                        <div className="text-sm font-semibold text-ink-900 dark:text-ink-100">Cart</div>
+                      </div>
+                      {cart.length > 0 && slug && (
+                        <button
+                          type="button"
+                          onClick={() => clearCart(slug)}
+                          className="text-xs font-medium text-ink-500 hover:text-rose-600"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    {cart.length === 0 ? (
+                      <p className="text-sm text-ink-500">Add menu items to start an order.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {cart.map((item) => (
+                          <div key={item.item_id} className="flex items-center justify-between gap-3 rounded-xl bg-white p-2 dark:bg-ink-900">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-ink-900 dark:text-ink-100">{item.name}</div>
+                              <div className="text-xs text-ink-500">
+                                {item.price_cents != null ? formatPrice(item.price_cents) : "Market price"}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button type="button" size="sm" variant="secondary" onClick={() => slug && updateQuantity(slug, item.item_id, item.quantity - 1)}>
+                                {item.quantity === 1 ? <Trash2 className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
+                              </Button>
+                              <span className="w-6 text-center text-sm font-semibold text-ink-900 dark:text-ink-100">{item.quantity}</span>
+                              <Button type="button" size="sm" variant="secondary" onClick={() => slug && updateQuantity(slug, item.item_id, item.quantity + 1)}>
+                                <Plus className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+
+                        <div className="grid grid-cols-2 gap-2">
+                          {(["dine-in", "take-out"] as CustomerOrderMode[]).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setOrderMode(mode)}
+                              className={cn(
+                                "rounded-xl border px-3 py-2 text-sm font-medium transition",
+                                orderMode === mode
+                                  ? "border-[var(--tenant-primary)] bg-[var(--tenant-primary)] text-white"
+                                  : "border-ink-200 bg-white text-ink-700 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200",
+                              )}
+                            >
+                              {mode === "dine-in" ? "Dine-in" : "Take-out"}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-ink-200 pt-3 dark:border-ink-800">
+                          <div>
+                            <div className="text-xs text-ink-500">Total</div>
+                            <div className="text-lg font-semibold text-ink-900 dark:text-ink-100">{formatPrice(cartTotalCents)}</div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="tenant"
+                            onClick={() => {
+                              if (!slug || !customer) return;
+                              const order = submitOrder(slug, customer.customer_id, orderMode);
+                              if (!order) return;
+                              toast.success(`Order placed. Token #${order.token_number}.`);
+                              setPanelTab("orders");
+                            }}
+                          >
+                            Place order
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </CardBody>
               </Card>
 
@@ -570,6 +706,89 @@ export function ChatPage() {
                 <PingPongGame />
               </div>
             </div>
+          )}
+
+          {panelTab === "orders" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Order status</CardTitle>
+                <CardDescription>Track current and recent customer orders for this tenant.</CardDescription>
+              </CardHeader>
+              <CardBody>
+                {customerOrders.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-ink-300 bg-ink-50 p-6 text-center dark:border-ink-700 dark:bg-ink-950/40">
+                    <ReceiptText className="mx-auto h-8 w-8 text-ink-400" />
+                    <p className="mt-2 text-sm font-medium text-ink-900 dark:text-ink-100">No orders yet</p>
+                    <p className="mt-1 text-sm text-ink-500">Add menu items to your cart and place an order.</p>
+                    <Button type="button" variant="secondary" className="mt-4" onClick={() => setPanelTab("chat")}>
+                      Browse menu
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {customerOrders.map((order) => (
+                      <div key={order.id} className="rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-[var(--tenant-primary)] px-3 py-1 text-xs font-semibold text-white">
+                                Token #{order.token_number}
+                              </span>
+                              <span className="rounded-full border border-ink-200 px-3 py-1 text-xs font-semibold text-ink-600 dark:border-ink-700 dark:text-ink-300">
+                                {order.mode === "dine-in" ? "Dine-in" : "Take-out"}
+                              </span>
+                              {order.table_number && (
+                                <span className="rounded-full border border-ink-200 px-3 py-1 text-xs font-semibold text-ink-600 dark:border-ink-700 dark:text-ink-300">
+                                  Table #{order.table_number}
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-3 text-sm text-ink-500">
+                              Ordered {new Date(order.created_at).toLocaleString()}
+                            </div>
+                          </div>
+                          <div
+                            className={cn(
+                              "rounded-2xl px-4 py-2 text-sm font-semibold",
+                              order.status === "ready"
+                                ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                                : order.status === "preparing"
+                                  ? "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                                  : "bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200",
+                            )}
+                          >
+                            {ORDER_STATUS_LABELS[order.status]}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-2">
+                          {order.items.map((item) => (
+                            <div key={item.item_id} className="flex items-center justify-between gap-3 rounded-xl bg-ink-50 px-3 py-2 dark:bg-ink-950/40">
+                              <div className="text-sm font-medium text-ink-900 dark:text-ink-100">
+                                {item.quantity}x {item.name}
+                              </div>
+                              <div className="text-sm text-ink-500">
+                                {item.price_cents != null ? formatPrice(item.price_cents * item.quantity) : "Market price"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-ink-200 pt-3 dark:border-ink-800">
+                          <div className="text-sm text-ink-500">
+                            Total <span className="font-semibold text-ink-900 dark:text-ink-100">{formatPrice(order.total_cents)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-ink-500">
+                            <span className={cn("h-2 w-2 rounded-full", order.status === "ready" ? "bg-emerald-500" : "bg-amber-500")} />
+                            {order.status === "ready" ? "Food is ready." : "Status updates automatically."}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
           )}
 
           {panelTab === "usage" && (
