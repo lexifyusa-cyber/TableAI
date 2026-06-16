@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, RotateCw, Sparkles } from "lucide-react";
+import { ArrowLeft, LogIn, LogOut, RotateCw, Sparkles, UserCircle } from "lucide-react";
 import { useTenant } from "@/hooks/useTenants";
 import { useTenantTheme } from "@/hooks/useTenantTheme";
 import { useChat } from "@/hooks/useChat";
 import { useMenu } from "@/hooks/useMenu";
 import { useTenantStore } from "@/stores/tenant";
+import { useCustomerAuthStore } from "@/stores/customerAuth";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { SuggestedPrompts } from "@/components/chat/SuggestedPrompts";
@@ -33,9 +34,15 @@ export function ChatPage() {
   const { data: tenant, isLoading: tenantLoading, error: tenantError } = useTenant(slug);
   const { data: menu } = useMenu(slug);
   const { data: timeline } = useTimeline(slug);
+
+  const getCustomer = useCustomerAuthStore((s) => s.getCustomer);
+  const clearCustomer = useCustomerAuthStore((s) => s.clearCustomer);
+  const customer = slug ? getCustomer(slug) : null;
+
   const { messages, send, stop, reset, isStreaming, error } = useChat({
     tenant: slug ?? "",
     surface: "qr",
+    customerId: customer?.customer_id ?? null,
   });
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -81,7 +88,7 @@ export function ChatPage() {
         ) : tenant ? (
           <>
             <div
-              className="flex h-9 w-9 items-center justify-center rounded-full text-white text-xs font-bold"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-xs font-bold"
               style={{ backgroundColor: tenant.brand?.primary_color || "#f97316" }}
             >
               {tenant.name.slice(0, 2).toUpperCase()}
@@ -92,6 +99,31 @@ export function ChatPage() {
             </div>
           </>
         ) : null}
+
+        {customer ? (
+          <div className="flex items-center gap-1.5">
+            <UserCircle className="h-4 w-4 text-ink-400" />
+            <span className="hidden text-xs text-ink-600 dark:text-ink-400 sm:inline">
+              {customer.display_name ?? customer.email ?? "Guest"}
+            </span>
+            <button
+              onClick={() => { if (slug) clearCustomer(slug); }}
+              className="ml-1 rounded-lg p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <Link
+            to={`/c/${slug}/login`}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-600 hover:bg-ink-100 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            Sign in
+          </Link>
+        )}
+
         <Button variant="ghost" size="sm" onClick={reset} disabled={messages.length === 0}>
           <RotateCw className="h-4 w-4" />
           <span className="hidden sm:inline">New chat</span>
@@ -106,6 +138,18 @@ export function ChatPage() {
         {messages.length === 0 ? (
           <div className="flex flex-col gap-4">
             <SeasonalBanner nextHoliday={timeline?.public?.next_holiday} />
+            {!customer && (
+              <Link
+                to={`/c/${slug}/login`}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-ink-300 bg-white/60 px-4 py-3 text-sm text-ink-600 hover:border-ink-400 hover:bg-white dark:border-ink-700 dark:bg-ink-800/30 dark:text-ink-400 dark:hover:bg-ink-800/60"
+              >
+                <div className="flex items-center gap-2">
+                  <UserCircle className="h-5 w-5 text-ink-400" />
+                  <span>Sign in to save your conversation history</span>
+                </div>
+                <LogIn className="h-4 w-4 shrink-0" />
+              </Link>
+            )}
             <AttractMode menu={menu} tenantName={tenant?.name ?? "us"} />
             <SpiceTrustFall menu={menu} tenantName={tenant?.name ?? "us"} onPickDish={(name) => send(`Tell me about the ${name}`)} />
             <div className="flex flex-col items-center rounded-2xl border border-dashed border-ink-300 bg-white/50 px-4 py-5 text-center dark:border-ink-700 dark:bg-ink-800/30">

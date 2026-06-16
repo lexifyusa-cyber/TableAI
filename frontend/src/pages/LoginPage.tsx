@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { KeyRound, Mail, ShieldAlert } from "lucide-react";
 import { signInWithPassword, signInWithOtp, verifyOtp, refreshProfile } from "@/hooks/useAuth";
 import { useAuthStore } from "@/stores/auth";
-import { supabaseConfigured } from "@/lib/env";
+import { localAuthEnabled } from "@/lib/env";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Input";
@@ -86,15 +86,12 @@ export function LoginPage() {
           <p className="mt-1 text-sm text-ink-500">Owner access to the dashboard.</p>
         </div>
 
-        {!supabaseConfigured && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+        {localAuthEnabled && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
             <ShieldAlert className="h-4 w-4 shrink-0" />
             <div>
-              <div className="font-semibold">Supabase not configured.</div>
-              <div className="mt-0.5">
-                Copy <code className="font-mono">.env.example</code> to <code className="font-mono">.env</code> and fill in
-                <code className="font-mono"> VITE_SUPABASE_URL</code> + <code className="font-mono">VITE_SUPABASE_ANON_KEY</code>.
-              </div>
+              <div className="font-semibold">Local auth mode enabled.</div>
+              <div className="mt-0.5">Use any email and password for testing without Supabase.</div>
             </div>
           </div>
         )}
@@ -148,7 +145,7 @@ export function LoginPage() {
                     placeholder="••••••••"
                   />
                 </Field>
-                <Button type="submit" className="w-full" loading={submitting} disabled={!supabaseConfigured}>
+                <Button type="submit" className="w-full" loading={submitting}>
                   Sign in
                 </Button>
                 <p className="text-center text-xs text-ink-500">
@@ -170,7 +167,7 @@ export function LoginPage() {
                     />
                   </div>
                 </Field>
-                <Button type="submit" className="w-full" loading={submitting} disabled={!supabaseConfigured}>
+                <Button type="submit" className="w-full" loading={submitting}>
                   Send code
                 </Button>
               </form>

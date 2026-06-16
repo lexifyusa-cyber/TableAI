@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SessionLocal
+from app.config import get_settings
 from app.models.app_setting import AppSetting
 from app.models.llm_provider import LLMProvider
 from app.models.tenant import Tenant
@@ -49,6 +50,18 @@ async def _resolve_provider_for_kind(db: AsyncSession, kind: str) -> LLMProvider
         await db.execute(
             select(LLMProvider)
             .where(LLMProvider.kind == kind, LLMProvider.enabled == True)  # noqa: E712
+            .order_by(LLMProvider.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return row
+
+
+async def _resolve_first_enabled_provider(db: AsyncSession) -> LLMProvider | None:
+    row = (
+        await db.execute(
+            select(LLMProvider)
+            .where(LLMProvider.enabled == True)  # noqa: E712
             .order_by(LLMProvider.created_at.asc())
             .limit(1)
         )
@@ -89,19 +102,36 @@ async def get_provider_for(
             override_kind = override_kind or entry.get("kind")
             override_model = override_model or entry.get("model")
 
+        allowed_models = (await _load_json_setting(db, "llm.allowed_models")) or {}
+        allowed_for_kind = allowed_models.get(override_kind or "") or []
+
         # 3. Hard-coded fallback
         if not override_kind:
+            provider_row = await _resolve_first_enabled_provider(db)
+            if provider_row:
+                override_kind = provider_row.kind
+                if not override_model:
+                    override_model = next(iter(allowed_models.get(override_kind) or []), None)
+                    if not override_model:
+                        override_model = (
+                            "claude-sonnet-4-6" if override_kind == "anthropic" else "gpt-4o-mini"
+                        )
+                return _instantiate(provider_row), override_model
             override_kind = "anthropic"
-        if not override_model:
-            override_model = (
-                "claude-sonnet-4-6" if override_kind == "anthropic" else "gpt-4o-mini"
-            )
+            allowed_for_kind = allowed_models.get(override_kind) or []
+        if allowed_for_kind and (not override_model or override_model not in allowed_for_kind):
+            override_model = allowed_for_kind[0]
+        elif not override_model:
+            override_model = "claude-sonnet-4-6" if override_kind == "anthropic" else "gpt-4o-mini"
 
         provider_row = await _resolve_provider_for_kind(db, override_kind)
         if not provider_row:
+            settings = get_settings()
+            if override_kind == "anthropic" and settings.anthropic_api_key:
+                return AnthropicProvider(api_key=settings.anthropic_api_key), override_model
             raise RuntimeError(
                 f"No enabled LLM provider of kind '{override_kind}' is configured. "
-                "Add one at /admin/providers."
+                "Add one at /admin/providers or set ANTHROPIC_API_KEY in the backend env."
             )
 
         return _instantiate(provider_row), override_model

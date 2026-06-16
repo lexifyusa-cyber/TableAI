@@ -1,8 +1,10 @@
 import { env } from "./env";
 import { useAuthStore } from "@/stores/auth";
+import { localAuthEnabled } from "@/lib/env";
 import type {
   ConversationSummary,
   ConversationThread,
+  CustomerProfile,
   GenerateDemoRequest,
   GenerateDemoResponse,
   MenuResponse,
@@ -17,8 +19,17 @@ const base = env.apiUrl.replace(/\/$/, "");
 // supabase.auth.getSession() here — it can deadlock on the auth lock when
 // multiple requests fire in parallel right after sign-in.
 function authHeader(): Record<string, string> {
-  const token = useAuthStore.getState().session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const store = useAuthStore.getState();
+  const token = store.session?.access_token;
+  if (token) return { Authorization: `Bearer ${token}` };
+  if (localAuthEnabled && store.profile) {
+    return {
+      "X-Dev-Auth": "1",
+      "X-Dev-Email": store.profile.email,
+      "X-Dev-Role": store.profile.role,
+    };
+  }
+  return {};
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -68,6 +79,15 @@ export const api = {
 
   getMetrics: (tenant: string) =>
     request<MetricsResponse>(`/api/metrics?tenant=${encodeURIComponent(tenant)}`),
+
+  customerJoin: (body: { tenant: string; display_name?: string }) =>
+    request<CustomerProfile>("/api/customer/join", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  customerMe: (tenant: string) =>
+    request<CustomerProfile>(`/api/customer/me?tenant=${encodeURIComponent(tenant)}`),
 };
 
 export function chatUrl(): string {

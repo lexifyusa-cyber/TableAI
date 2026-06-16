@@ -11,6 +11,7 @@ from app.api import (
     admin as admin_api,
     chat,
     conversations,
+    customer_auth as customer_auth_api,
     demo,
     integrations as integrations_api,
     invites as invites_api,
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     # local dev (no fly-client-ip header).
     app.add_middleware(CloudflareOnlyMiddleware)
 
+    app.include_router(customer_auth_api.router, prefix="/api")
     app.include_router(demo.router, prefix="/api")
     app.include_router(owner_edit_api.router, prefix="/api")
     app.include_router(menu.router, prefix="/api")

@@ -27,6 +27,9 @@ class Customer(Base):
     preferences: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     push_subscription: Mapped[dict | None] = mapped_column(JSONB)
 
+    # Linked Supabase auth user (set when customer creates an account via magic link).
+    auth_user_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

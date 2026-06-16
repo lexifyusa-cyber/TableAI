@@ -50,10 +50,11 @@ export default defineConfig({
     port: 5174,
     proxy: {
       "/api": {
-        target: "http://localhost:8001",
+        target: "http://localhost:8000",
         changeOrigin: true,
       },
-      "/health": "http://localhost:8001",
+      "/health": "http://localhost:8000",
+      "/static": "http://localhost:8000",
     },
   },
 });

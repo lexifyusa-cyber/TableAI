@@ -19,12 +19,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid5, NAMESPACE_DNS
 
 from fastapi import Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.auth.supabase import verify_token
 from app.db import get_session
 from app.models.profile import Profile
@@ -54,6 +55,28 @@ async def current_user_optional(
     (e.g. public customer chat)."""
     token = _extract_bearer(request)
     if not token:
+        s = get_settings()
+        if s.app_env == "development" and request.headers.get("x-dev-auth") == "1":
+            email = (request.headers.get("x-dev-email") or "").strip()
+            if not email:
+                return None
+            role = (request.headers.get("x-dev-role") or "owner").strip().lower()
+            if role not in ("admin", "employee", "owner"):
+                role = "owner"
+            user_id = uuid5(NAMESPACE_DNS, f"tableai-dev:{email.lower()}")
+            profile = (
+                await db.execute(select(Profile).where(Profile.user_id == user_id))
+            ).scalar_one_or_none()
+            if profile:
+                if profile.email != email or profile.role != role:
+                    profile.email = email
+                    profile.role = role
+                    await db.commit()
+                return CurrentUser(user_id=profile.user_id, email=profile.email, role=profile.role)
+            new_profile = Profile(user_id=user_id, email=email, role=role, display_name=None)
+            db.add(new_profile)
+            await db.commit()
+            return CurrentUser(user_id=user_id, email=email, role=role)
         return None
     supa_user = await verify_token(token)
     if not supa_user or "id" not in supa_user:

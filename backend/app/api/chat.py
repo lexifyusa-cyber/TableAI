@@ -24,6 +24,7 @@ from app.models import (
     MessageRole,
     Tenant,
 )
+from app.models.customer import Customer
 from app.services.knowledge import KnowledgeManifest
 from app.services.llm import get_provider_for
 
@@ -36,6 +37,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     conversation_id: str | None = None
     surface: str = "qr"
+    customer_id: str | None = None
 
 
 @router.post("")
@@ -59,6 +61,21 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_session)) -> Str
             }
         ]
 
+    # Validate customer_id belongs to this tenant (if provided).
+    validated_customer_id: UUID | None = None
+    if req.customer_id:
+        try:
+            cid = UUID(req.customer_id)
+            row = (
+                await db.execute(
+                    select(Customer).where(Customer.id == cid, Customer.tenant_id == t.id)
+                )
+            ).scalar_one_or_none()
+            if row:
+                validated_customer_id = cid
+        except (ValueError, AttributeError):
+            pass
+
     # Load or create the conversation.
     conv: Conversation | None = None
     if req.conversation_id:
@@ -76,6 +93,7 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_session)) -> Str
             surface_enum = ConversationSurface.QR
         conv = Conversation(
             tenant_id=t.id,
+            customer_id=validated_customer_id,
             session_id=req.session_id or str(uuid4()),
             surface=surface_enum,
         )

@@ -21,6 +21,7 @@ import { AdminProvidersPage } from "@/pages/AdminProvidersPage";
 import { AdminModelsPage } from "@/pages/AdminModelsPage";
 import { AdminEnrichmentPage } from "@/pages/AdminEnrichmentPage";
 import { AdminIntegrationsPage } from "@/pages/AdminIntegrationsPage";
+import { CustomerLoginPage } from "@/pages/CustomerLoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { RequireRole } from "@/components/RequireRole";
 
@@ -74,6 +75,7 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route path="/" element={<PostLoginRedirect />} />
         <Route path="/c/:slug" element={<DevicePreview><ChatPage /></DevicePreview>} />
+        <Route path="/c/:slug/login" element={<CustomerLoginPage />} />
         <Route path="/demo" element={<RequireRole roles={["admin", "employee"]}><DemoPage /></RequireRole>} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/invite" element={<InvitePage />} />

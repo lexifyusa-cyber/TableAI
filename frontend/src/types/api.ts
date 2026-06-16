@@ -161,6 +161,13 @@ export interface ConversationThread {
   messages: ConversationMessage[];
 }
 
+export interface CustomerProfile {
+  customer_id: string;
+  tenant: string;
+  email?: string | null;
+  display_name?: string | null;
+}
+
 export interface MetricsResponse {
   tenant: string;
   conversations_7d: number;

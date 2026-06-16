@@ -7,13 +7,14 @@ interface UseChatOptions {
   tenant: string;
   surface?: ConversationSurface;
   sessionId?: string;
+  customerId?: string | null;
 }
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-export function useChat({ tenant, surface = "qr", sessionId }: UseChatOptions) {
+export function useChat({ tenant, surface = "qr", sessionId, customerId }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export function useChat({ tenant, surface = "qr", sessionId }: UseChatOptions) {
             surface,
             session_id: sessionId,
             conversation_id: conversationIdRef.current,
+            customer_id: customerId ?? null,
           }),
           signal: abort.signal,
         });
@@ -108,7 +110,7 @@ export function useChat({ tenant, surface = "qr", sessionId }: UseChatOptions) {
         abortRef.current = null;
       }
     },
-    [tenant, surface, sessionId, isStreaming],
+    [tenant, surface, sessionId, customerId, isStreaming],
   );
 
   const stop = useCallback(() => {

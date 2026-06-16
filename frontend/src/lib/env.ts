@@ -5,3 +5,4 @@ export const env = {
 };
 
 export const supabaseConfigured = Boolean(env.supabaseUrl && env.supabaseAnonKey);
+export const localAuthEnabled = !supabaseConfigured;

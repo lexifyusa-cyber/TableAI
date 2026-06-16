@@ -63,6 +63,69 @@ async def _upsert_knowledge(
     await db.execute(stmt)
 
 
+def _normalize_item(item: object) -> dict | None:
+    if isinstance(item, str):
+        name = item.strip()
+        return {"name": name} if name else None
+    if isinstance(item, dict):
+        name = str(item.get("name") or "").strip()
+        if not name:
+            return None
+        normalized = dict(item)
+        normalized["name"] = name
+        for key in ("tags", "ingredients", "allergens"):
+            value = normalized.get(key)
+            if value is None:
+                normalized[key] = []
+            elif not isinstance(value, list):
+                normalized[key] = [value]
+        return normalized
+    return None
+
+
+def _normalize_categories(raw: object) -> list[dict]:
+    if isinstance(raw, list):
+        candidates = raw
+    elif isinstance(raw, dict):
+        if "name" in raw and "items" in raw:
+            candidates = [raw]
+        else:
+            candidates = []
+            for name, value in raw.items():
+                if isinstance(value, dict):
+                    candidate = dict(value)
+                    candidate["name"] = str(candidate.get("name") or name).strip()
+                    candidate["items"] = candidate.get("items") or []
+                    candidates.append(candidate)
+                elif isinstance(value, list):
+                    candidates.append({"name": str(name).strip(), "items": value})
+                elif isinstance(value, str):
+                    candidates.append({"name": str(name).strip(), "items": [{"name": value.strip()}]})
+    else:
+        return []
+
+    normalized: list[dict] = []
+    for cat in candidates:
+        if not isinstance(cat, dict):
+            continue
+        name = str(cat.get("name") or "").strip()
+        if not name:
+            continue
+        items: list[dict] = []
+        for item in cat.get("items") or []:
+            normalized_item = _normalize_item(item)
+            if normalized_item:
+                items.append(normalized_item)
+        normalized.append(
+            {
+                "name": name,
+                "description": cat.get("description"),
+                "items": items,
+            }
+        )
+    return normalized
+
+
 async def _replace_menu(db: AsyncSession, tenant: Tenant, tool_input: dict) -> None:
     """Delete and re-insert this tenant's menu categories + items from a tool_input.
 
@@ -71,7 +134,7 @@ async def _replace_menu(db: AsyncSession, tenant: Tenant, tool_input: dict) -> N
     await db.execute(delete(MenuItem).where(MenuItem.tenant_id == tenant.id))
     await db.execute(delete(MenuCategory).where(MenuCategory.tenant_id == tenant.id))
 
-    for cat_idx, cat in enumerate(tool_input.get("categories", []) or []):
+    for cat_idx, cat in enumerate(_normalize_categories(tool_input.get("categories"))):
         category = MenuCategory(
             tenant_id=tenant.id,
             name=cat["name"],
@@ -82,18 +145,21 @@ async def _replace_menu(db: AsyncSession, tenant: Tenant, tool_input: dict) -> N
         await db.flush()
 
         for item_idx, item in enumerate(cat.get("items", []) or []):
+            normalized_item = _normalize_item(item)
+            if not normalized_item:
+                continue
             db.add(
                 MenuItem(
                     tenant_id=tenant.id,
                     category_id=category.id,
-                    name=item["name"],
-                    description=item.get("description"),
-                    price_cents=item.get("price_cents"),
-                    price_confidence=item.get("price_confidence"),
-                    image_url=item.get("image_url"),
-                    tags=list(item.get("tags") or []),
-                    ingredients=list(item.get("ingredients") or []),
-                    allergens=list(item.get("allergens") or []),
+                    name=normalized_item["name"],
+                    description=normalized_item.get("description"),
+                    price_cents=normalized_item.get("price_cents"),
+                    price_confidence=normalized_item.get("price_confidence"),
+                    image_url=normalized_item.get("image_url"),
+                    tags=list(normalized_item.get("tags") or []),
+                    ingredients=list(normalized_item.get("ingredients") or []),
+                    allergens=list(normalized_item.get("allergens") or []),
                     sort_order=item_idx,
                 )
             )
@@ -133,16 +199,14 @@ def _validate_save_tenant(ti: dict) -> list[str]:
         for f in REQUIRED_BRAND:
             if f not in brand or brand[f] in (None, "",):
                 errs.append(f"missing required brand.{f}")
-    cats = ti.get("categories") or []
-    if isinstance(cats, list):
-        for i, cat in enumerate(cats):
-            if not isinstance(cat, dict):
-                errs.append(f"categories[{i}] is not an object")
-                continue
-            if "name" not in cat or not cat["name"]:
-                errs.append(f"missing categories[{i}].name")
-            if "items" not in cat or not cat["items"]:
-                errs.append(f"missing categories[{i}].items")
+    cats = _normalize_categories(ti.get("categories"))
+    if not cats:
+        errs.append("categories must contain at least one category")
+    for i, cat in enumerate(cats):
+        if "name" not in cat or not cat["name"]:
+            errs.append(f"missing categories[{i}].name")
+        if "items" not in cat or not cat["items"]:
+            errs.append(f"missing categories[{i}].items")
     return errs
 
 
@@ -361,7 +425,7 @@ async def refresh_menu(db: AsyncSession, tenant: Tenant) -> dict:
     )
 
     await db.commit()
-    categories = tool_input.get("categories") or []
+    categories = _normalize_categories(tool_input.get("categories"))
     item_count = sum(len(c.get("items") or []) for c in categories)
     return {
         "category_count": len(categories),
